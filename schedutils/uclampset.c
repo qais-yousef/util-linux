@@ -82,23 +82,52 @@ static void __attribute__((__noreturn__)) usage(void)
 	exit(EXIT_SUCCESS);
 }
 
+static void proc_pid_name(pid_t pid, char *name, int len)
+{
+	char *proc_comm_fmt = "/proc/%d/comm";
+	char proc_comm[32];
+	FILE *fp;
+	int size;
+
+	size = snprintf(proc_comm, 32, proc_comm_fmt, pid);
+	if (size >= 32 || size < 0)
+		goto error;
+
+	fp = fopen(proc_comm, "r");
+	if (!fp)
+		goto error;
+
+	size = fread(name, 1, len, fp);
+	name[size-1] = '\0';
+
+	fclose(fp);
+
+	if (ferror(fp))
+		goto error;
+
+	return;
+error:
+	strncpy(name, "unknown", len);
+}
+
 static void show_uclamp_pid_info(pid_t pid)
 {
+#ifdef HAVE_SCHED_SETATTR
+	struct sched_attr sa;
+	char comm[128];
+
 	/* don't display "pid 0" as that is confusing */
 	if (!pid)
 		pid = getpid();
 
-#ifdef HAVE_SCHED_SETATTR
-	{
-		struct sched_attr sa;
 
-		if (sched_getattr(pid, &sa, sizeof(sa), 0) != 0)
-			err(EXIT_FAILURE, _("failed to get pid %d's uclamp values"), pid);
+	proc_pid_name(pid, comm, 128);
 
-		printf(_("pid %d\n\tutil_min: %d\n\tutil_max: %d\n"),
-			  pid, sa.sched_util_min, sa.sched_util_max);
-	}
+	if (sched_getattr(pid, &sa, sizeof(sa), 0) != 0)
+		err(EXIT_FAILURE, _("failed to get pid %d's uclamp values"), pid);
 
+	printf(_("%s-%d\n\tutil_min: %d\n\tutil_max: %d\n"),
+		  comm, pid, sa.sched_util_min, sa.sched_util_max);
 #else
 	err(EXIT_FAILURE, _("uclamp is not supported on this system"));
 #endif
