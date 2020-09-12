@@ -1,4 +1,4 @@
-.\" chrt(1) manpage
+.\" uclampset(1) manpage
 .\"
 .\" Copyright (C) 2020 Qais Yousef <qyousef@layalina.io>
 .\"
@@ -22,87 +22,62 @@
 .\"
 .TH UCLAMPSET 1 "August 2020" "util-linux" "User Commands"
 .SH NAME
-chrt \- manipulate the utilization clamping attributes of a process
+uclampset \- manipulate the utilization clamping attributes of the system or
+a process.
 .SH SYNOPSIS
 .B uclampset
 [options]
-.IR priority\ command\  [ argument ...]
+.IR uclamp_min\ uclamp_max\ command\  [ argument ...]
 .br
-.B chrt
+.B uclampset
 [options]
 .B \-p
-.RI [ priority ]\  pid
+.RI [ uclamp_min\ uclamp_max ]\  pid
 .SH DESCRIPTION
-.B chrt
-sets or retrieves the real-time scheduling attributes of an existing \fIpid\fR,
+.B uclampset
+sets or retrieves the utilization clamping attributes of an existing \fIpid\fR,
 or runs \fIcommand\fR with the given attributes.
 
-.SH POLICIES
-.TP
-\fB\-o\fR, \fB\-\-other\fR
-Set scheduling policy to
-.BR SCHED_OTHER .
-This is the default Linux scheduling policy.
-.TP
-\fB\-f\fR, \fB\-\-fifo\fR
-Set scheduling policy to \fBSCHED_FIFO\fR.
-.TP
-\fB\-r\fR, \fB\-\-rr\fR
-Set scheduling policy to
-.BR SCHED_RR .
-When no policy is defined, the
-.B SCHED_RR
-is used as the default.
-.TP
-\fB\-b\fR, \fB\-\-batch\fR
-Set scheduling policy to
-.B SCHED_BATCH
-(Linux-specific, supported since 2.6.16).  The priority argument has to be set to zero.
-.TP
-\fB\-i\fR, \fB\-\-idle\fR
-Set scheduling policy to
-.B SCHED_IDLE
-(Linux-specific, supported since 2.6.23).  The priority argument has to be set to zero.
-.TP
-.BR \-d ,\  \-\-deadline
-Set scheduling policy to
-.B SCHED_DEADLINE
-(Linux-specific, supported since 3.14).  The priority argument has to be set to zero.
-See also \fB\-\-sched\-runtime\fR, \fB\-\-sched\-deadline\fR and
-\fB\-\-sched\-period\fR.  The relation between the options required by the kernel is
-runtime <= deadline <= period.
-.B chrt
-copies \fIperiod\fR to \fIdeadline\fR if \fB\-\-sched\-deadline\fR is not specified and
-\fIdeadline\fR to \fIruntime\fR if \fB\-\-sched\-runtime\fR is not specified.
-It means that at least \fB\-\-sched\-period\fR has to be specified.  See
-.BR sched (7)
-for more details.
+Utilization clamping is a new feature added in v5.3. It gives a hint to the
+scheduler about the allowed range of utilization the task should be operating
+at.
 
-.SH SCHEDULING OPTIONS
-.TP
-\fB\-T\fR, \fB\-\-sched\-runtime\fR \fInanoseconds\fR
-Specifies runtime parameter for SCHED_DEADLINE policy (Linux-specific).
-.TP
-\fB\-P\fR, \fB\-\-sched\-period\fR \fInanoseconds\fR
-Specifies period parameter for SCHED_DEADLINE policy (Linux-specific).
-.TP
-\fB\-D\fR, \fB\-\-sched\-deadline\fR \fInanoseconds\fR
-Specifies deadline parameter for SCHED_DEADLINE policy (Linux-specific).
-.TP
-\fB\-R\fR, \fB\-\-reset-on-fork\fR
-Add
-.B SCHED_RESET_ON_FORK
-flag to the
-.B SCHED_FIFO
-or
-.B SCHED_RR
-scheduling policy (Linux-specific, supported since 2.6.31).
+The full utilization is range is: 0-1024.
+
+Setting a task's
+.B uclamp_min
+to a none zero value  will effectively boost the task as when it runs it'll
+always start from this utilization value.
+
+By setting a task's
+.B uclamp_max
+below 1024, this will effectively cap the task as when it runs it'll never be
+able to go above this utilization value.
+
+The utilization of the task affects frequency selection and task placement.
+Only schedutil cpufreq governors understand handling util clamp hints.
+
+If you're running on asymmetric heterogeneous system like Arm's big.LITTLE.
+Utilization clamping can help bias task placement. If the task is boosted such
+that
+.BR util_min
+value is higher than the little cores' capacity, then the scheduler will do its
+best to place it on a big core.
+
+Similarly, if
+.BR util_max
+is smaller than or equal the capacity of the little cores, then the scheduler
+can still choose to place it there even if the actual utilization of the task
+is at max.
 
 .SH OPTIONS
 .TP
 .BR \-a ,\  \-\-all-tasks
-Set or retrieve the scheduling attributes of all the tasks (threads) for a
-given PID.
+Set or retrieve the utilization clamping attributes of all the tasks (threads)
+for a given PID.
+.TP
+.BR \-s ,\  \-\-system
+Set or retrieve the system-wide utilization clamping attributes.
 .TP
 .BR \-m ,\  \-\-max
 Show minimum and maximum valid priorities, then exit.
@@ -121,17 +96,25 @@ Display help text and exit.
 .SH USAGE
 .TP
 The default behavior is to run a new command:
-.B chrt
-.I priority
+.B uclampset
+.I uclamp_min
+.I uclamp_max
 .IR command\  [ arguments ]
 .TP
-You can also retrieve the real-time attributes of an existing task:
-.B chrt \-p
+You can also retrieve the utilization clamping attributes of an existing task:
+.B uclampset \-p
 .I pid
 .TP
 Or set them:
-.B chrt \-r \-p
-.I priority pid
+.B uclampset \-p
+.I uclamp_min
+.I uclamp_max
+.I pid
+.TP
+Or control the system-wide attributes:
+.B uclampset \-s
+.I uclamp_min
+.I uclamp_max
 .SH PERMISSIONS
 A user must possess
 .B CAP_SYS_NICE
@@ -139,23 +122,30 @@ to change the scheduling attributes of a process.  Any user can retrieve the
 scheduling information.
 
 .SH NOTES
-Only
-.BR SCHED_FIFO ,
-.B SCHED_OTHER
+The system wide utilization clamp attributes are there to control the _allowed_
+range the tasks can use. By default both
+.BR uclamp_min
 and
-.B SCHED_RR
-are part of POSIX 1003.1b Process Scheduling.  The other scheduling attributes
-may be ignored on some systems.
-.P
-Linux' default scheduling policy is
-.BR SCHED_OTHER .
+.BR uclamp_max
+are set to 1024. This means users can set the utilization clamp values for
+their task across the full range [0:1024].
+
+If they're lowred, it means the max performance point of the system is lowered
+too.
+.TP
+For example:
+.B uclampset \-s
+.I 512
+.I 512
+.PP
+will prevent the utilization of any task to go above 512. Effectively capping
+the whole system performance to half its full capacity.
+
+Consult the documentation of your kernel version for the exact expected
+behavior on that kernel.
 .SH AUTHORS
-.UR rml@tech9.net
-Robert Love
-.UE
-.br
-.UR kzak@redhat.com
-Karel Zak
+.UR qyousef@layalina.io
+Qais Yousef
 .UE
 .SH SEE ALSO
 .BR nice (1),
@@ -167,5 +157,5 @@ See
 .BR sched_setscheduler (2)
 for a description of the Linux scheduling scheme.
 .SH AVAILABILITY
-The chrt command is part of the util-linux package and is available from
+The uclampset command is part of the util-linux package and is available from
 https://www.kernel.org/pub/linux/utils/util-linux/.
